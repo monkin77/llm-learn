@@ -1,0 +1,7 @@
+.env
+.vscode
+**/.venv
+output.json
+log.txt
+.idea
+run.sh
