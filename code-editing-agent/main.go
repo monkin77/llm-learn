@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
+	"path/filepath"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 
@@ -27,7 +30,7 @@ func main() {
 	}
 
 	// Define the tools that the agent can use
-	tools := []ToolDefinition{ReadFileDefinition}
+	tools := []ToolDefinition{ReadFileDefinition, ListFilesDefinition, EditFileDefinition}
 
 	// Create a new agent with the Anthropics client and the user message function
 	agent := NewAgent(&client, getUserMessage, tools)
@@ -158,7 +161,12 @@ func (a *Agent) runInference(ctx context.Context, conversation []anthropic.Messa
 	return message, err
 }
 
-// Define the Tools that the agent can use
+
+/*
+------------------------------------------------------------------------------------------
+------------------------ Define the Tools that the agent can use -------------------------
+------------------------------------------------------------------------------------------
+*/
 type ToolDefinition struct {
 	Name        string                         `json:"name"`
 	Description string                         `json:"description"`
@@ -209,4 +217,146 @@ func ReadFile(input json.RawMessage) (string, error) {
 		return "", err
 	}
 	return string(content), nil
+}
+
+// Define the ListFiles Tool
+var ListFilesDefinition = ToolDefinition{
+	Name:        "list_files",
+	Description: "List files and directories at a given path. If no path is provided, lists files in the current directory.",
+	InputSchema: ListFilesInputSchema,
+	Function:    ListFiles,
+}
+
+type ListFilesInput struct {
+	Path string `json:"path,omitempty" jsonschema_description:"Optional relative path to list files from. Defaults to current directory if not provided."`
+}
+
+var ListFilesInputSchema = GenerateSchema[ListFilesInput]()
+
+func ListFiles(input json.RawMessage) (string, error) {
+	listFilesInput := ListFilesInput{}
+	err := json.Unmarshal(input, &listFilesInput)	// Extract the input from the JSON string to the listFilesInput struct
+	if err != nil {
+		panic(err)
+	}
+
+	dir := "."	// Default directory to current directory
+	if listFilesInput.Path != "" {
+		// If a path is provided, use it as the directory
+		dir = listFilesInput.Path
+	}
+
+	var files []string
+	err = filepath.Walk(
+		dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relPath, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+
+		if relPath != "." {
+			if info.IsDir() {
+				// If the file is a directory, append it with a trailing slash
+				// this is done to let the Claude Agent know that this is a directory.
+				files = append(files, relPath+"/")
+			} else {
+				files = append(files, relPath)
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	result, err := json.Marshal(files)	// Convert the list of files to a JSON string
+	if err != nil {
+		return "", err
+	}
+
+	return string(result), nil
+}
+
+// Define the EditFile Tool
+var EditFileDefinition = ToolDefinition{
+	Name: "edit_file",
+	Description: `Make edits to a text file.
+
+	Replaces 'old_str' with 'new_str' in the given file. 'old_str' and 'new_str' MUST be different from each other.
+
+	If the file specified with path doesn't exist, it will be created.
+`,
+	InputSchema: EditFileInputSchema,
+	Function:    EditFile,
+}
+
+type EditFileInput struct {
+	Path   string `json:"path" jsonschema_description:"The path to the file"`
+	OldStr string `json:"old_str" jsonschema_description:"Text to search for - must match exactly and must only have one match exactly"`
+	NewStr string `json:"new_str" jsonschema_description:"Text to replace old_str with"`
+}
+
+var EditFileInputSchema = GenerateSchema[EditFileInput]()
+
+func EditFile(input json.RawMessage) (string, error) {
+	editFileInput := EditFileInput{}
+	err := json.Unmarshal(input, &editFileInput)
+	if err != nil {
+		return "", err
+	}
+
+	if editFileInput.Path == "" || editFileInput.OldStr == editFileInput.NewStr {
+		return "", fmt.Errorf("invalid input parameters")
+	}
+
+	content, err := os.ReadFile(editFileInput.Path)
+	if err != nil {
+		if os.IsNotExist(err) && editFileInput.OldStr == "" {
+			return createNewFile(editFileInput.Path, editFileInput.NewStr)
+		}
+		return "", err
+	}
+
+	// oldcontent contains the original content of the file
+	oldContent := string(content)
+
+	// Replace the old string by the new string in the file
+	newContent := strings.Replace(oldContent, editFileInput.OldStr, editFileInput.NewStr, -1)
+
+	if oldContent == newContent && editFileInput.OldStr != "" {
+		return "", fmt.Errorf("old_str not found in file")
+	}
+
+	err = os.WriteFile(editFileInput.Path, []byte(newContent), 0644)
+	if err != nil {
+		return "", err
+	}
+
+	return "OK", nil
+}
+
+func createNewFile(filePath, content string) (string, error) {
+	/* 
+	Auxiliary function to create a new file with the given content.
+	*/
+	dir := path.Dir(filePath)
+	if dir != "." {
+		err := os.MkdirAll(dir, 0755)
+		if err != nil {
+			return "", fmt.Errorf("failed to create directory: %w", err)
+		}
+	}
+
+	err := os.WriteFile(filePath, []byte(content), 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to create file: %w", err)
+	}
+
+	return fmt.Sprintf("Successfully created file %s", filePath), nil
 }
