@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "llm-learn"
+version = "0.1.0"
+description = "Python environment for various LLM-related projects"
+authors = ["Monkin <monkinsmurf@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+tensorflow = {extras = ["and-cuda"], version = "^2.19.0"}
+keras = "^3.10.0"
+pandas = "^2.3.1"
+keras-nlp = "^0.21.1"
+seaborn = "^0.13.2"
+matplotlib = "^3.10.3"
+scikit-learn = "^1.7.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
