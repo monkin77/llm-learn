@@ -11,3 +11,6 @@ You can find the competition details and dataset on Kaggle:
 3. **Fetch the Dataset**: Download the dataset from Kaggle and place it in the `input` directory.
 4. **Run the Notebook**: Open the notebook in Jupyter or any compatible environment and execute the cells sequentially.
 
+# Solutions
+1. **DistilBert**: A solution using DistilBERT, a smaller and faster version of the Bidirectional Encoder Representations from Transformers (BERT) model. This is an Encoder-only Architecture that is efficient for text classification tasks.
+2. **DistilBert With Ensemble Learning**: This solution builds upon the DistilBERT model by incorporating ensemble learning techniques to improve classification accuracy. Uses K-Fold Cross-Validation to train multiple models and average their predictions.
